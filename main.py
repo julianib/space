@@ -717,7 +717,7 @@ class Render:
             f"Cam x,y: {Camera.center_pos}",
             f"Zoom: {Camera.zoom_factor}x",
             f"Stars: {len(Universe.get_stars())}",
-            f"Clst bodies: {len(Universe.celestial_bodies)}",
+            f"Cel bodies: {len(Universe.celestial_bodies)}",
             f"Trace points: {n_trace_points}"
         ]
 
@@ -759,8 +759,7 @@ class Render:
                 f"dist: {dist}",
                 f"radius: {round(locked_celestial.radius, 1)}",
                 f"radial_vel: {radial_vel}°/s",
-                f"angle: {round(math.degrees(locked_celestial.angle))}°",
-                f"tstp: {round(locked_celestial.time_since_trace_point, 2)}s",
+                f"angle: {round(math.degrees(locked_celestial.angle))}°"
             ])
 
         SCREEN.blits([(FONT.render(lines[i], True, COLOR_WHITE),
