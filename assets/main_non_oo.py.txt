@@ -1,0 +1,860 @@
+import math
+
+from globals import *
+
+# pygame init
+# todo pg display flags https://stackoverflow.com/questions/29135147/what-do-hwsurface-and-doublebuf-do
+pg.display.set_caption("Space Sim")
+pg.font.init()
+IMGS_BACKGROUND_STAR = [pg.image.load(os.path.join(ASSETS_FOLDER, f"bg_star_{i}.png"))
+                        for i in range(7)]
+IMG_PLAYER = pg.image.load(os.path.join(ASSETS_FOLDER, "astronaut.png"))
+print("Pygame init")
+
+
+class CelestialBody:
+    def __init__(self, universe, host, dist, radius, angle=0, radial_vel=None, color=None, name=None):
+        if not isinstance(host, CelestialBody) and type(self) != Star:
+            raise Exception(
+                f"Invalid host {type(host)} given for {type(self)}")
+
+        if not radius:
+            raise Exception(f"Caused a black hole")
+
+        self.universe = universe
+        self.host = host
+        self.dist = dist
+        self.radius = radius
+
+        if angle is None:
+            angle = 2 * math.pi * random.random()
+        self.angle = angle  # angle relative to host
+
+        if radial_vel is None:
+            radial_vel = 2 * math.pi * random.uniform(0.1, 1)
+        self.radial_vel = radial_vel
+
+        if color is None:
+            color = get_random_color()
+        self.color = color
+
+        self.uuid = self.universe.get_new_uuid()
+        # todo impl function to validate name
+        self.name = name or type(self).__name__ + "#" + str(self.uuid)
+
+        self.age = 0
+        self.gravity = 20
+        self.guests = []
+        self.trace_points = []  # from oldest to newest
+        self.trace_point_frequency = min(60, MAX_FPS)  # if tpf >> FPS, memory leak!
+        self.time_since_trace_point = 0
+        self.universe.celestial_bodies.append(self)
+
+    def __str__(self):
+        return self.name
+
+    def tick(self, dt):
+        self.age += dt
+        self.update_angle(dt)
+
+        for point in self.trace_points:
+            point.tick(dt)
+            if point.age >= point.max_age:
+                self.trace_points.remove(point)
+
+        self.time_since_trace_point += dt
+        if self.time_since_trace_point >= (1 / self.trace_point_frequency):  # todo optimize
+            self.create_trace_point()
+            self.time_since_trace_point = 0
+
+    def draw(self):
+        self.draw_trace_points()
+        self.draw_circle()
+
+    def update_angle(self, dt):
+        self.angle += self.radial_vel * dt
+        self.angle %= 2 * math.pi
+
+    def create_trace_point(self):
+        self.trace_points.append(TracePoint(self.universe, self))
+        # print(f"{self} created trace point, total {len(self.trace_points)}")
+
+    def draw_guest_orbits(self):
+        for guest in self.guests:
+            dist = guest.dist
+            pg.draw.circle(self.universe.screen, WHITE, self.get_center_on_screen(), round(dist), 1)
+
+    # todo gfx bug: tp doesnt show when rel x or y is highest/lowest
+    def draw_trace_points(self):
+        trace_points_reversed = self.trace_points.copy()
+        trace_points_reversed.reverse()
+        for i, point in enumerate(trace_points_reversed):  # order = newest to oldest
+            if i == 0:
+                point.draw_to(self.get_abs_center())
+
+            next_index = i + 1
+            if next_index == len(trace_points_reversed):
+                break
+
+            point.draw_to(trace_points_reversed[next_index].abs_pos)
+
+    def draw_circle(self):
+        r = round(self.radius)
+        pg.draw.circle(self.universe.screen, self.color, self.get_center_on_screen(), r)
+
+    def draw_label(self):
+        label = self.universe.font.render(str(self), True, WHITE, BLACK)
+        self.universe.screen.blit(label, self.get_center_on_screen())
+
+    def is_hovered(self):
+        mouse_x, mouse_y = pg.mouse.get_pos()
+        screen_center_x, screen_center_y = self.get_center_on_screen()
+
+        return math.hypot(mouse_x - screen_center_x, mouse_y - screen_center_y) <= self.radius
+
+    def set_name(self, name):
+        name = name.strip()
+        if not name:
+            print("Invalid name")
+            return
+
+        self.name = name
+        print(f"Set name of {self} to {self.name}")
+
+    def get_rel_center(self):
+        return self.dist * math.cos(self.angle), self.dist * math.sin(self.angle)
+
+    def get_abs_center_float(self):
+        host_abs_center_x, host_abs_center_y = self.host.get_abs_center_float()
+        rel_center_x, rel_center_y = self.get_rel_center()
+        return host_abs_center_x + rel_center_x, host_abs_center_y + rel_center_y
+
+    def get_abs_center(self):
+        center_float_x, center_float_y = self.get_abs_center_float()
+        return round(center_float_x), round(center_float_y)
+
+    def get_center_on_screen(self):
+        camera_center = self.universe.camera.center_pos
+        abs_center = self.get_abs_center_float()
+        center_on_screen = round(abs_center[0] - camera_center[0] + SCREEN_CENTER[0]), \
+                           round(abs_center[1] - camera_center[1] + SCREEN_CENTER[1])
+
+        return center_on_screen
+
+    def get_guests(self, recursive=False):
+        guests = self.guests.copy()
+        if recursive:
+            for guest in self.guests:
+                guests.extend(guest.get_guests(recursive=True))
+
+        return guests
+
+
+class Moon(CelestialBody):
+    def __init__(self, universe, host, dist):
+        print("Moon init...")
+        super().__init__(universe, host, dist, RADIUS_MOON, radial_vel=2 * math.pi * random.uniform(0.5, 4),
+                         color=MOON_COLOR)
+
+        print(f"{self} @ {self.get_abs_center()} init, host={self.host}")
+
+
+class Planet(CelestialBody):
+    def __init__(self, universe, host, dist=0, radius=0):
+        print("Planet init...")
+
+        if not dist:
+            dist = get_random_dist(host, DISTANCE_EARTH, PLANET_DISTANCE_VARIANCE)
+
+        if not radius:
+            radius = get_random_radius(RADIUS_EARTH, PLANET_RADIUS_VARIANCE)
+
+        super().__init__(universe, host, dist, radius)
+
+        self.create_moons()
+
+        print(f"{self} @ {self.get_abs_center()} init, host={self.host}")
+
+    def create_moons(self, n=0):
+        if not n:
+            rand = random.random()
+            if rand > 0.95:
+                n = 4
+            elif rand > 0.9:
+                n = 3
+            elif rand > 0.75:
+                n = 2
+            elif rand > 0.5:
+                n = 1
+            else:
+                n = 0
+
+        for i in range(n):
+            self.add_moon()
+
+    def add_moon(self):
+        dist = get_random_dist(self, self.radius * 2 + DISTANCE_MOON * len(self.guests), 0)
+        self.guests.append(Moon(self.universe, self, dist))
+
+
+class Star(CelestialBody):
+    def __init__(self, universe, abs_center, radius=0, n_planets=0):
+        print("Star init...")
+
+        if not radius:
+            radius = get_random_radius(
+                RADIUS_SUN, STAR_RADIUS_VARIANCE)
+
+        self.abs_center = abs_center
+        super().__init__(universe, None, None, radius, color=STAR_COLOR)
+
+        self.generate_planets(n_planets)
+
+        print(f"{self} @ {self.get_abs_center()} init, n_planets={n_planets}")
+
+    def tick(self, dt):
+        pass
+
+    def draw(self):
+        self.draw_circle()
+
+    def get_abs_center_float(self):
+        return self.abs_center
+
+    def generate_planets(self, n):
+        for i in range(n):
+            self.add_planet()
+
+    def add_planet(self, dist=0, radius=0):
+        self.guests.append(Planet(self.universe, self, dist, radius))
+
+
+class Universe:
+    def __init__(self, screen):
+        print("Universe init...")
+        self.age = 0
+        self.age_real_time = 0
+        self.celestial_bodies = []
+        self.n_ticks = 0
+        self.paused = False
+        self.time_factor = DEFAULT_TIME_FACTOR
+        self.next_uuid = 1
+
+        self.camera = Camera(self)
+        self.console = Console(self)
+        self.environment = Environment(self)
+        self.font = pg.font.SysFont("Comic Sans MS", 20)
+        self.render = Render(self)
+        self.screen = screen
+
+        self.reset()
+        print("Universe init")
+
+    def reset(self):
+        print("Resetting universe")
+        self.celestial_bodies.clear()
+        self.add_star()
+
+    def add_star(self, n_planets=3):
+        star = Star(self, abs_center=(len(self.get_stars()) * STAR_DISTANCE, 0),
+                    n_planets=n_planets)
+        return star
+
+    def get_stars(self):
+        return [celestial for celestial in self.celestial_bodies
+                if type(celestial) == Star]
+
+    def tick(self, dt):
+        dt_adjusted = dt * self.time_factor
+        self.n_ticks += 1
+        self.age_real_time += dt
+        self.age += dt_adjusted
+
+        for celestial in self.celestial_bodies:
+            celestial.tick(dt_adjusted)
+
+        self.environment.tick(dt_adjusted)
+
+    def draw(self):  # todo check: cel.draw() for cel in self.cel_bodies ???
+        for star in self.get_stars():
+            star.draw()
+            for guest in star.get_guests(recursive=True):
+                guest.draw()
+
+    def set_time_factor(self, new_time):
+        try:
+            new_time = float(new_time)
+        except ValueError as ex:
+            print(f"{ex}: {new_time}")
+            return
+
+        self.time_factor = new_time
+
+    def create_from_template(self):
+        print(self, "todo")  # todo implement loading from template (json or w/e)
+
+    def get_hovered_object(self):
+        for celestial in self.celestial_bodies:
+            if celestial.is_hovered():
+                return celestial  # todo its possible to hover over 2+ celestial bodies, implement
+
+    def get_new_uuid(self):
+        old = self.next_uuid
+        self.next_uuid += 1
+        return old
+
+
+class TracePoint:
+    max_age = 1
+    line_width = 1
+
+    def __init__(self, universe, host):
+        self.universe = universe
+        self.host = host
+        self.abs_pos = host.get_abs_center()
+        self.color = host.color
+        self.age = 0
+
+    def tick(self, dt):
+        self.age += dt
+
+    def draw_to(self, to_abs):
+        from_abs = self.abs_pos
+        surf_top_left_abs = min(from_abs[0], to_abs[0]), min(
+            from_abs[1], to_abs[1])
+        surf_width, surf_height = abs(
+            from_abs[0] - to_abs[0]) + 1, abs(from_abs[1] - to_abs[1]) + 1
+        start_from_top_left = from_abs[0] - \
+                              surf_top_left_abs[0], from_abs[1] - surf_top_left_abs[1]
+        end_from_top_left = to_abs[0] - \
+                            surf_top_left_abs[0], to_abs[1] - surf_top_left_abs[1]
+
+        r, g, b = self.color
+        color_with_alpha = r, g, b, round(
+            math.floor((1 - (self.age / self.max_age)) * 255))
+
+        surf = pg.Surface((surf_width, surf_height), pg.SRCALPHA)
+        pg.draw.line(surf, color_with_alpha,
+                     start_from_top_left, end_from_top_left, TracePoint.line_width)
+        self.universe.screen.blit(surf, self.universe.camera.calculate_pos_on_screen(
+            surf_top_left_abs))
+
+
+class BackgroundStar:
+    def __init__(self, universe):
+        self.universe = universe
+
+        self.frame = random.randint(0, 6)
+        self.default_ticks = random.randint(5, 15)
+        self.n_ticks = random.randint(0, self.default_ticks)
+        self.screen_pos = 0, 0  # todo disgusting
+        self.set_random_position()
+        self.alpha = random.randint(0, 255)
+
+    def tick(self):
+        if self.n_ticks == 0:
+            self.increment_frame()
+            self.n_ticks = self.default_ticks
+        self.n_ticks -= 1
+
+    def increment_frame(self):
+        self.frame += 1
+        if self.frame == 7:
+            self.frame = 0
+            self.set_random_position()
+
+    def set_random_position(self):
+        self.screen_pos = random.randint(
+            0, SCREEN_W - 64), random.randint(0, SCREEN_H - 64)
+
+    def draw(self):
+        img: pg.Surface = IMGS_BACKGROUND_STAR[self.frame].copy()
+        # https://stackoverflow.com/a/16177852
+        img.fill((255, 255, 255, self.alpha), None, pg.BLEND_RGBA_MULT)
+        self.universe.screen.blit(img, self.screen_pos)
+
+
+class Console:
+    def __init__(self, universe):
+        self.universe = universe
+        self.leading_text = "Type Here: "
+        self.input_text = ""
+        self.active = False
+        self.text_color = WHITE
+        self.position = (40, 200)
+
+    def process(self):
+        text = self.input_text.strip()
+        text_lower = text.lower()
+        text_lower_split = text_lower.split()
+        print(f"Processing input \"{text}\"")
+
+        if len(text_lower_split) == 0:
+            return
+
+        if text_lower_split[0] == "time":
+            self.universe.set_time_factor(text_lower_split[1])
+            return
+
+        for celestial in self.universe.celestial_bodies:
+            if str(celestial.uuid).lower() == text_lower or \
+                    str(celestial).lower() == text_lower:
+                celestial_type = type(celestial)
+                print(celestial_type)
+                self.universe.camera.set_locked_celestial(celestial)
+                return
+
+        if len(text_lower_split) == 1:
+            return
+
+        if text_lower_split[0] == "name":
+            locked_celestial = self.universe.camera.locked_celestial
+            if not locked_celestial:
+                print("No locked celestial")
+                return
+
+            locked_celestial.set_name(" ".join(text.split()[1:]))
+
+    def add_text(self, text):
+        self.input_text += text
+
+    def clear_text(self):
+        self.input_text = ""
+
+    def remove_last_character(self):
+        self.input_text = self.input_text[:-1]
+
+    def toggle(self):
+        if self.active:
+            self.process()
+            self.clear_text()
+
+        self.active = not self.active
+
+    def draw(self):
+        if not self.active:
+            return
+
+        surf = self.universe.font.render(self.leading_text + self.input_text,
+                                         True, self.text_color)
+        self.universe.screen.blit(surf, self.position)
+
+
+class EnvironmentEntity:
+    def __init__(self, universe, environment, abs_pos, color):
+        self.universe = universe
+        self.environment = environment
+        self.abs_pos = abs_pos
+        self.color = color
+
+        self.y_vel = 0
+        self.on_ground = False
+        self.w, self.h = 20, 20
+        self.surf = pg.Surface((self.w, self.h))
+        self.surf.fill(self.color)
+        self.rect: pg.Rect = self.surf.get_rect()
+
+    def draw(self):
+        abs_pos_offsetted = self.abs_pos[0] - self.w / 2, \
+                            self.abs_pos[1] - self.h / 2
+        self.universe.screen.blit(self.surf,
+                                  self.universe.camera.calculate_pos_on_screen(
+                                      abs_pos_offsetted))
+
+    def tick(self, dt):
+        self.y_vel += self.environment.celestial_body.gravity
+        self.abs_pos = self.abs_pos[0], self.abs_pos[1] + self.y_vel * dt
+        if self.abs_pos[1] + self.h / 2 >= self.environment.ground_y:
+            self.on_ground = True
+            self.abs_pos = self.abs_pos[0], self.environment.ground_y - self.h / 2
+            self.y_vel = 0
+
+        else:
+            self.on_ground = False
+
+        self.check_collisions()
+
+    def check_collisions(self):  # todo broken asf
+        for item in self.environment.items:
+            if self.abs_pos[0] <= item.abs_pos[0] + 10:
+                self.abs_pos = item.abs_pos[0] + 30, self.abs_pos[1]
+            elif self.abs_pos[0] + 10 >= item.abs_pos[0]:
+                self.abs_pos = item.abs_pos[0] - 20, self.abs_pos[1]
+
+
+class Item(EnvironmentEntity):
+    def __init__(self, universe, environment, abs_pos, color):
+        super().__init__(universe, environment, abs_pos, color)
+
+
+class Player(EnvironmentEntity):
+    def __init__(self, universe, environment):
+        super().__init__(universe, environment, (0, 0), AQUA)
+        self.jump_vel = 400
+        self.movement_speed = 10
+        self.img = IMG_PLAYER
+
+    def tick(self, dt):
+        self.y_vel += self.environment.celestial_body.gravity
+        self.abs_pos = self.abs_pos[0], self.abs_pos[1] + self.y_vel * dt
+        if self.abs_pos[1] + self.h / 2 >= self.environment.ground_y:
+            self.on_ground = True
+            self.abs_pos = self.abs_pos[0], self.environment.ground_y - self.h / 2
+            self.y_vel = 0
+
+        else:
+            self.on_ground = False
+
+    def draw(self):
+        abs_pos_offsetted = self.abs_pos[0] - \
+                            self.w / 2, self.abs_pos[1] - self.h / 2
+        self.universe.screen.blit(self.img,
+                                  self.universe.camera.calculate_pos_on_screen(
+                                      abs_pos_offsetted))
+
+    def move(self, add_x):
+        if not add_x:
+            return
+
+        old = self.abs_pos
+        self.abs_pos = old[0] + int(add_x) * self.movement_speed, old[1]
+
+    def jump(self):
+        if self.on_ground:
+            self.y_vel = -self.jump_vel
+
+    def drop_item(self):
+        self.environment.add_item(self.abs_pos)
+
+
+class Environment:
+    def __init__(self, universe):
+        self.universe = universe
+        self.celestial_body: CelestialBody = None
+        self.ground_y = 100
+        self.player = None
+        self.items = []
+
+    def enter_celestial(self, celestial):
+        self.celestial_body = celestial
+        self.player = Player(self.universe, self)
+
+    def leave_celestial(self):
+        self.celestial_body = None
+        self.player = None
+
+    def draw(self):
+        self.draw_background()
+        self.draw_ground()
+        self.draw_items()
+        self.player.draw()
+
+    def draw_items(self):
+        for item in self.items:
+            item.draw()
+
+    def draw_background(self):
+        self.universe.screen.fill(BLACK)
+
+    def draw_ground(self):
+        ground_on_screen = self.universe.camera.calculate_pos_on_screen((0, 100))[1]
+        if ground_on_screen >= SCREEN_H:
+            return
+
+        ground_draw_height = SCREEN_H - ground_on_screen
+        surf = pg.Surface((SCREEN_W, ground_draw_height))
+        surf.fill(self.celestial_body.color)
+        self.universe.screen.blit(surf, (0, ground_on_screen))
+
+    def tick(self, dt):
+        if self.celestial_body:
+            for item in self.items:
+                item.tick(dt)
+            self.player.tick(dt)
+
+    def add_item(self, abs_pos):
+        self.items.append(Item(self.universe, self, abs_pos, self.celestial_body.color))
+
+
+class Camera:
+    def __init__(self, universe):
+        self.universe = universe
+        self.zoom_factor = 1
+        self.center_pos = 0, 0
+        self.locked_celestial = None
+
+    def set_center(self, new_center):
+        self.center_pos = new_center
+
+    def move_center(self, add_x, add_y):
+        if not (add_x or add_y):
+            return
+
+        self.clear_locked_celestial()
+        old = self.center_pos
+        self.set_center((old[0] + int(add_x) * CAMERA_MOVEMENT_STEP,
+                         old[1] + int(add_y) * CAMERA_MOVEMENT_STEP))
+
+    def set_locked_celestial(self, celestial_body):
+        self.locked_celestial = celestial_body
+
+    def clear_locked_celestial(self):
+        self.locked_celestial = None
+
+    def snap_to_locked_celestial(self):
+        if self.locked_celestial is not None:
+            self.set_center(self.locked_celestial.get_abs_center())
+
+    def snap_to_player(self):
+        if self.universe.environment.celestial_body:
+            self.set_center(self.universe.environment.player.abs_pos)
+
+    def calculate_pos_on_screen(self, abs_pos):
+        camera_center = self.center_pos
+        pos_on_screen = round(abs_pos[0] - camera_center[0] + SCREEN_CENTER[0]), \
+                        round(abs_pos[1] - camera_center[1] + SCREEN_CENTER[1])
+
+        return pos_on_screen
+
+
+class Render:
+    def __init__(self, universe):
+        self.universe = universe
+        self.last_dt = 1
+        self.background_stars = []
+        self.reset_background_stars()
+
+    def draw_background(self):
+        self.universe.screen.fill(BACKGROUND_COLOR)
+        for background_star in self.background_stars:
+            background_star.tick()  # todo move to seperate thread
+            background_star.draw()
+
+    def draw_debug(self):
+        if not SHOW_DEBUG:
+            return
+
+        n_trace_points = 0
+        for celestial in self.universe.celestial_bodies:
+            n_trace_points += len(celestial.trace_points)
+
+        fps = round(1 / self.last_dt)
+
+        lines = [
+            f"FPS: {fps} ({round(self.last_dt, 3)}s/t)",
+
+            f"Time factor: {round(self.universe.time_factor, 2)}x",
+            f"Age: {round(self.universe.age, 1)}s "
+            f"(real: {round(self.universe.age_real_time, 1)}s, "
+
+            f"{self.universe.n_ticks} ticks)",
+            f"Cam x,y: {self.universe.camera.center_pos}",
+            f"Zoom: {self.universe.camera.zoom_factor}x",
+            f"Stars: {len(self.universe.get_stars())}",
+            f"Cel bodies: {len(self.universe.celestial_bodies)}",
+            f"Trace points: {n_trace_points}"
+        ]
+
+        if self.universe.environment.celestial_body:
+            celestial = self.universe.environment.celestial_body
+            lines.extend([
+                "",
+                f"Cel body: {celestial}",
+                f"x,y: {self.universe.environment.player.abs_pos}",
+                f"y_vel: {self.universe.environment.player.y_vel}",
+                f"on_ground: {self.universe.environment.player.on_ground}",
+                f"Items: {len(self.universe.environment.items)}"
+            ])
+
+        elif self.universe.camera.locked_celestial:
+            locked_celestial = self.universe.camera.locked_celestial
+            guests = [str(guest) for guest in locked_celestial.guests]
+            if guests:
+                guests_formatted = ", ".join(guests)
+            else:
+                guests_formatted = "-"
+
+            host = locked_celestial.host
+            if host:
+                dist = round(locked_celestial.dist, 1)
+                orbit = str(
+                    round(2 * math.pi / locked_celestial.radial_vel, 1)) + "s"
+                radial_vel = round(math.degrees(locked_celestial.radial_vel))
+            else:
+                dist = orbit = radial_vel = "-"
+
+            lines.extend([
+                "",
+                str(locked_celestial),
+                f"Host: {host or '-'}",
+                f"Guests: {guests_formatted}",
+                f"Orbit period: {orbit}",
+                f"x,y: {locked_celestial.get_abs_center()}",
+                f"dist: {dist}",
+                f"radius: {round(locked_celestial.radius, 1)}",
+                f"radial_vel: {radial_vel}°/s",
+                f"angle: {round(math.degrees(locked_celestial.angle))}°"
+            ])
+
+        self.universe.screen.blits([(self.universe.font.render(lines[i], True, WHITE),
+                                     (0, i * 20)) for i in range(len(lines))])
+
+    def draw_hover_label(self):
+        hovered_celestial = self.universe.get_hovered_object()
+        if hovered_celestial:
+            label = str(hovered_celestial)
+
+            self.universe.screen.blit(self.universe.font.render(label, True, WHITE, BLACK), pg.mouse.get_pos())
+
+    def draw_screen(self):
+        if self.universe.environment.celestial_body:
+            self.universe.environment.draw()
+
+        else:
+            self.draw_background()
+            self.draw_locked_celestial_body_lines()
+            self.universe.draw()  # todo don't draw things off that are off screen (performance)
+            self.draw_orbits()
+            self.draw_hover_label()
+
+        self.draw_debug()
+        self.universe.console.draw()
+        self.draw_paused_screen()
+
+        pg.display.update()
+
+    def draw_orbits(self):
+        if SHOW_GUEST_ORBITS:
+            for celestial in self.universe.celestial_bodies:
+                celestial.draw_guest_orbits()
+
+    def draw_locked_celestial_body_lines(self):
+        locked_celestial = self.universe.camera.locked_celestial
+
+        if not locked_celestial:
+            return
+
+        for guest in locked_celestial.guests:
+            pg.draw.line(self.universe.screen, GREEN, SCREEN_CENTER,
+                         guest.get_center_on_screen())
+
+        host = locked_celestial.host
+        if host:
+            pg.draw.line(self.universe.screen, AQUA, SCREEN_CENTER,
+                         host.get_center_on_screen())
+
+    def reset_background_stars(self):
+        for i in range(N_BACKGROUND_STARS):
+            self.background_stars.append(BackgroundStar(self.universe))
+
+    def draw_paused_screen(self):
+        if not self.universe.paused:
+            return
+
+        surf = self.universe.font.render("PAUSED", True, WHITE, BLACK)
+        rect: pg.Rect = surf.get_rect()
+        self.universe.screen.blit(
+            surf, (SCREEN_CENTER[0] - rect.center[0], SCREEN_CENTER[1] - rect.center[1]))
+
+
+def handle_events_and_input(universe):
+    camera = universe.camera
+    console = universe.console
+    environment = universe.environment
+    render = universe.render
+
+    for ev in pg.event.get():
+        if ev.type == pg.QUIT:
+            raise InterruptedError
+
+        elif ev.type == pg.KEYDOWN:  # ACTIVE KEY PRESSES
+            if ev.key == pg.K_RETURN:
+                console.toggle()
+            elif console.active:
+                if ev.key == pg.K_BACKSPACE:
+                    console.remove_last_character()
+
+                else:
+                    console.add_text(ev.unicode)
+
+                continue
+
+            locked_celestial = camera.locked_celestial
+            if ev.key == pg.K_e:
+                if not environment.celestial_body and locked_celestial:
+                    environment.enter_celestial(locked_celestial)
+                else:
+                    environment.leave_celestial()
+            elif ev.key == pg.K_f and environment.celestial_body:
+                environment.player.drop_item()
+            elif ev.key == pg.K_F1:
+                render.show_debug = not render.show_debug
+            elif ev.key == pg.K_o:
+                render.show_orbits = not render.show_orbits
+            elif ev.key == pg.K_q:
+                raise InterruptedError
+            elif ev.key == pg.K_r:
+                universe.reset()
+                universe.camera.clear_locked_celestial()
+            elif ev.key == pg.K_SPACE:
+                universe.paused = not universe.paused
+
+        elif ev.type == pg.MOUSEBUTTONDOWN:
+            if ev.button == 1:
+                celestial = universe.get_hovered_object()
+                if celestial is not None:
+                    camera.set_locked_celestial(celestial)
+
+            elif ev.button == 4 and camera.zoom_factor <= CAMERA_ZOOM_FACTOR_MAX:
+                camera.zoom_factor *= 2
+            elif ev.button == 5 and camera.zoom_factor >= CAMERA_ZOOM_FACTOR_MIN:
+                camera.zoom_factor *= 0.5
+
+    pressed_keys = pg.key.get_pressed()
+    if not console.active:  # PASSIVE KEY PRESSES
+        if pressed_keys[pg.K_EQUALS] and universe.time_factor <= TIME_FACTOR_MAX:
+            universe.time_factor += TIME_FACTOR_STEP
+        if pressed_keys[pg.K_MINUS] and universe.time_factor >= TIME_FACTOR_MIN:
+            universe.time_factor -= TIME_FACTOR_STEP
+
+        if environment.celestial_body and not universe.paused:
+            environment.player.move((pressed_keys[pg.K_RIGHT] or pressed_keys[pg.K_d]) -
+                                    (pressed_keys[pg.K_LEFT] or pressed_keys[pg.K_a]))
+            if pressed_keys[pg.K_w]:
+                environment.player.jump()
+
+        else:
+            camera.move_center((pressed_keys[pg.K_RIGHT] or pressed_keys[pg.K_d]) -
+                               (pressed_keys[pg.K_LEFT]
+                                or pressed_keys[pg.K_a]),
+                               (pressed_keys[pg.K_DOWN] or pressed_keys[pg.K_s]) -
+                               (pressed_keys[pg.K_UP] or pressed_keys[pg.K_w]))
+
+
+def main():
+    clock = pg.time.Clock()
+    screen: pg.Surface = pg.display.set_mode((SCREEN_W, SCREEN_H))
+    universe = Universe(screen)
+
+    while True:
+        dt = clock.tick(MAX_FPS) / 1000.0
+        if not universe.paused:
+            universe.render.last_dt = dt
+            universe.tick(dt)
+
+        if universe.environment.celestial_body:
+            universe.camera.snap_to_player()
+        else:
+            universe.camera.snap_to_locked_celestial()
+
+        universe.render.draw_screen()
+
+        try:
+            handle_events_and_input(universe)
+        except InterruptedError:
+            print("Exiting")
+            break
+
+
+if __name__ == "__main__":
+    main()
