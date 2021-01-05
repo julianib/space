@@ -782,7 +782,7 @@ class Render:
         else:
             Render.draw_background()
             Render.draw_locked_celestial_body_lines()
-            Universe.draw()  # todo dont draw things off that are off screen (performance)
+            Universe.draw()  # todo don't draw things off that are off screen (performance)
             Render.draw_orbits()
             Render.draw_hover_label()
 
