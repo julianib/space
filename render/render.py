@@ -1,7 +1,7 @@
 import math
 
 from globals import *
-from background_star import BackgroundStar
+from .background_star import BackgroundStar
 
 
 class Render:

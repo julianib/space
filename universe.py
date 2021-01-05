@@ -2,7 +2,7 @@ from globals import *
 from camera import Camera
 from console import Console
 from environment.environment import Environment
-from render import Render
+from render.render import Render
 from space.star import Star
 
 
