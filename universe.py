@@ -32,7 +32,7 @@ class Universe:
         self.celestial_bodies.clear()
         self.add_star()
 
-    def add_star(self, n_planets=3):
+    def add_star(self, n_planets=10):
         star = Star(self, abs_center=(len(self.get_stars()) * STAR_DISTANCE, 0),
                     n_planets=n_planets)
         return star

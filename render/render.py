@@ -28,18 +28,21 @@ class Render:
         fps = round(1 / self.last_dt)
 
         lines = [
-            f"FPS: {fps} ({round(self.last_dt, 3)}s/t)",
+            f"FPS: {fps} ",
+
+            f"{self.universe.n_ticks} ticks, "
+            f"{round(self.last_dt, 3)}s/t",
 
             f"Time factor: {round(self.universe.time_factor, 2)}x",
-            f"Age: {round(self.universe.age, 1)}s "
-            f"(real: {round(self.universe.age_real_time, 1)}s, "
 
-            f"{self.universe.n_ticks} ticks)",
+            f"Age: {round(self.universe.age, 2)}s, "
+            f"real: {round(self.universe.age_real_time, 2)}s",
+
             f"Cam x,y: {self.universe.camera.center_pos}",
             f"Zoom: {self.universe.camera.zoom_factor}x",
             f"Stars: {len(self.universe.get_stars())}",
             f"Cel bodies: {len(self.universe.celestial_bodies)}",
-            f"Trace points: {n_trace_points}"
+            f"Trace points: {n_trace_points}",
         ]
 
         if self.universe.environment.celestial_body:
@@ -56,6 +59,8 @@ class Render:
         elif self.universe.camera.locked_celestial:
             locked_celestial = self.universe.camera.locked_celestial
             guests = [str(guest) for guest in locked_celestial.guests]
+            n_guests = len(guests)
+
             if guests:
                 guests_formatted = ", ".join(guests)
             else:
@@ -74,7 +79,7 @@ class Render:
                 "",
                 str(locked_celestial),
                 f"Host: {host or '-'}",
-                f"Guests: {guests_formatted}",
+                f"Guests ({n_guests}): {guests_formatted}",
                 f"Orbit period: {orbit}",
                 f"x,y: {locked_celestial.get_abs_center()}",
                 f"dist: {dist}",

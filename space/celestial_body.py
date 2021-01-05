@@ -5,7 +5,7 @@ from .trace_point import TracePoint
 
 
 class CelestialBody:
-    def __init__(self, universe, host, dist, radius, angle=0, radial_vel=None, color=None, name=None):
+    def __init__(self, universe, host, dist, radius, angle=None, radial_vel=None, color=None, name=None):
         # if not isinstance(host, CelestialBody) and type(self) != Star:
         #     raise Exception(
         #         f"Invalid host {type(host)} given for {type(self)}")
@@ -38,7 +38,7 @@ class CelestialBody:
         self.gravity = 20
         self.guests = []
         self.trace_points = []  # from oldest to newest
-        self.trace_point_frequency = min(60, MAX_FPS)  # if tpf >> FPS, memory leak!
+        self.trace_point_frequency = min(MAX_TRACE_POINTS, MAX_FPS)  # if tpf >> FPS, memory leak!
         self.time_since_trace_point = 0
         self.universe.celestial_bodies.append(self)
 
@@ -60,6 +60,11 @@ class CelestialBody:
             self.time_since_trace_point = 0
 
     def draw(self):
+        on_screen_x, on_screen_y = self.universe.camera.calculate_pos_on_screen(self.get_abs_center())
+        if on_screen_x > SCREEN_W or on_screen_x < 0 or \
+                on_screen_y > SCREEN_H or on_screen_y < 0:
+            return  # todo fix cutoffs if obj is partially on screen
+
         self.draw_trace_points()
         self.draw_circle()
 

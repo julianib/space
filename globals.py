@@ -5,9 +5,10 @@ import pygame as pg
 
 # settings
 SCREEN_W, SCREEN_H = 1280, 720
-MAX_FPS = 60
+MAX_FPS = 120
 ASSETS_FOLDER = "assets"
 TRACE_POINT_MAX_AGE = 1
+MAX_TRACE_POINTS = 100  # per celestial object
 N_BACKGROUND_STARS = 10
 
 DEFAULT_TIME_FACTOR = 0.1
