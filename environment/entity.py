@@ -14,6 +14,7 @@ class Entity:
         self.surf = pg.Surface((self.w, self.h))
         self.surf.fill(self.color)
         self.rect: pg.Rect = self.surf.get_rect()
+        self.environment.entities.append(self)
 
     def draw(self):
         abs_pos_offsetted = self.abs_pos[0] - self.w / 2, \
@@ -36,8 +37,8 @@ class Entity:
         self.check_collisions()
 
     def check_collisions(self):  # todo broken asf
-        for item in self.environment.items:
-            if self.abs_pos[0] <= item.abs_pos[0] + 10:
-                self.abs_pos = item.abs_pos[0] + 30, self.abs_pos[1]
-            elif self.abs_pos[0] + 10 >= item.abs_pos[0]:
-                self.abs_pos = item.abs_pos[0] - 20, self.abs_pos[1]
+        for entity in self.environment.entities:
+            if self.abs_pos[0] <= entity.abs_pos[0] + 10:
+                self.abs_pos = entity.abs_pos[0] + 30, self.abs_pos[1]
+            elif self.abs_pos[0] + 10 >= entity.abs_pos[0]:
+                self.abs_pos = entity.abs_pos[0] - 20, self.abs_pos[1]

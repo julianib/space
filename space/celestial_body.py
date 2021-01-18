@@ -61,8 +61,8 @@ class CelestialBody:
 
     def draw(self):
         on_screen_x, on_screen_y = self.universe.camera.calculate_pos_on_screen(self.get_abs_center())
-        if on_screen_x > SCREEN_W or on_screen_x < 0 or \
-                on_screen_y > SCREEN_H or on_screen_y < 0:
+        if on_screen_x > SCREEN_WIDTH or on_screen_x < 0 or \
+                on_screen_y > SCREEN_HEIGHT or on_screen_y < 0:
             return  # todo fix cutoffs if obj is partially on screen
 
         self.draw_trace_points()

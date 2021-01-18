@@ -46,7 +46,7 @@ def handle_events_and_input(universe):
         elif ev.type == pg.MOUSEBUTTONDOWN:
             if ev.button == 1:
                 celestial = universe.get_hovered_object()
-                if celestial is not None:
+                if celestial:
                     camera.set_locked_celestial(celestial)
 
             elif ev.button == 4 and camera.zoom_factor <= CAMERA_ZOOM_FACTOR_MAX:

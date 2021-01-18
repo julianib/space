@@ -26,7 +26,7 @@ class BackgroundStar:
 
     def set_random_position(self):
         self.screen_pos = random.randint(
-            0, SCREEN_W - 64), random.randint(0, SCREEN_H - 64)
+            0, SCREEN_WIDTH - 64), random.randint(0, SCREEN_HEIGHT - 64)
 
     def draw(self):
         img: pg.Surface = IMGS_BACKGROUND_STAR[self.frame].copy()

@@ -7,7 +7,7 @@ from space.star import Star
 
 
 class Universe:
-    def __init__(self, screen):
+    def __init__(self):
         print("Universe init...")
         self.age = 0
         self.age_real_time = 0
@@ -22,7 +22,7 @@ class Universe:
         self.environment = Environment(self)
         self.font = pg.font.SysFont("Comic Sans MS", 20)
         self.render = Render(self)
-        self.screen = screen
+        self.screen: pg.Surface = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
         self.reset()
         print("Universe init")

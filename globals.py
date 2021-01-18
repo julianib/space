@@ -1,10 +1,12 @@
 import random
 import os
+import math
+import numpy as np
 import pygame as pg
 
 
 # settings
-SCREEN_W, SCREEN_H = 1280, 720
+SCREEN_WIDTH, SCREEN_HEIGHT = 1280, 720
 MAX_FPS = 120
 ASSETS_FOLDER = "assets"
 TRACE_POINT_MAX_AGE = 1
@@ -32,12 +34,25 @@ IMG_PLAYER = pg.image.load(os.path.join(ASSETS_FOLDER, "astronaut.png"))
 
 
 # colors
-WHITE = 255, 255, 255
+RED = 255, 0, 0
+GREEN = 0, 255, 0
+BLUE = 0, 0, 255
 YELLOW = 255, 255, 0
+MAGENTA = 255, 0, 255
+CYAN = 0, 255, 255
+
 BLACK = 0, 0, 0
 GRAY = 127, 127, 127
-GREEN = 0, 255, 0
-AQUA = 0, 255, 255
+WHITE = 255, 255, 255
+
+DARK_RED = 63, 0, 0
+DARK_GREEN = 0, 63, 0
+DARK_BLUE = 0, 0, 63
+DARK_YELLOW = 63, 63, 0
+DARK_MAGENTA = 63, 0, 63
+DARK_CYAN = 0, 63, 63
+DARK_GRAY = 63, 63, 63
+
 BACKGROUND_COLOR = 6, 6, 20
 
 
@@ -59,7 +74,8 @@ STAR_RADIUS_VARIANCE = 0.5
 
 
 # quality of life constants
-SCREEN_CENTER = round(SCREEN_W / 2), round(SCREEN_H / 2)
+SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF = round(SCREEN_WIDTH / 2), round(SCREEN_HEIGHT / 2)
+SCREEN_CENTER = SCREEN_WIDTH_HALF, SCREEN_HEIGHT_HALF
 
 
 # general functions
@@ -74,3 +90,11 @@ def get_random_radius(base, variance):
 
 def get_random_color():
     return random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)
+
+
+# numpy shortcuts
+def v2(x, y):
+    return np.array([x, y])
+
+
+v2_zero = v2(0.0, 0.0)

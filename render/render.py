@@ -14,7 +14,7 @@ class Render:
     def draw_background(self):
         self.universe.screen.fill(BACKGROUND_COLOR)
         for background_star in self.background_stars:
-            background_star.tick()  # todo move to seperate thread
+            background_star.tick()
             background_star.draw()
 
     def draw_debug(self):
@@ -53,7 +53,7 @@ class Render:
                 f"x,y: {self.universe.environment.player.abs_pos}",
                 f"y_vel: {self.universe.environment.player.y_vel}",
                 f"on_ground: {self.universe.environment.player.on_ground}",
-                f"Items: {len(self.universe.environment.items)}"
+                f"entities: {len(self.universe.environment.entities)}"
             ])
 
         elif self.universe.camera.locked_celestial:
@@ -99,11 +99,12 @@ class Render:
             self.universe.screen.blit(self.universe.font.render(label, True, WHITE, BLACK), pg.mouse.get_pos())
 
     def draw_screen(self):
+        self.draw_background()
+
         if self.universe.environment.celestial_body:
             self.universe.environment.draw()
 
         else:
-            self.draw_background()
             self.draw_locked_celestial_body_lines()
             self.universe.draw()  # todo don't draw things off that are off screen (performance)
             self.draw_orbits()
@@ -132,7 +133,7 @@ class Render:
 
         host = locked_celestial.host
         if host:
-            pg.draw.line(self.universe.screen, AQUA, SCREEN_CENTER,
+            pg.draw.line(self.universe.screen, CYAN, SCREEN_CENTER,
                          host.get_center_on_screen())
 
     def reset_background_stars(self):

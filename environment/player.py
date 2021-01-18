@@ -4,7 +4,7 @@ from .entity import Entity
 
 class Player(Entity):
     def __init__(self, universe, environment):
-        super().__init__(universe, environment, (0, 0), AQUA)
+        super().__init__(universe, environment, (0, 0), CYAN)
         self.jump_vel = 400
         self.movement_speed = 10
         self.img = IMG_PLAYER
